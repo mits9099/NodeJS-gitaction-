@@ -1,60 +1,27 @@
-name: Local Container Health Verification
+name: Simple Health Check
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  workflow_dispatch:
 
 jobs:
-  test-endpoint:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository source code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build local Docker image from Dockerfile
-        run: |
-          echo "Compiling TypeScript and building multi-stage container..."
-          docker build -t local-app:test .
+      - name: Build image
+        run: docker build -t my-app .
 
-      - name: Start container in background
-        run: |
-          echo "Spinning up container sharing the host network..."
-          # Added --network host to bypass proxy routing bugs
-          docker run -d --name app-container --network host local-app:test
+      - name: Run container
+        run: docker run -d --name app-container -p 3000:3000 my-app
 
-      - name: Hit endpoint and output result to terminal
+      - name: Wait and Test Endpoint
         run: |
-          # Changed http://localhost:3000/health to http://127.0.0.1:3000/health
-          echo "Polling http://127.0.0.1:3000/health until application answers..."
+          # Give Node exactly 3 seconds to boot up
+          sleep 3
           
-          attempt=0
-          until $(curl --output /dev/null --silent --head --fail http://127.0.0.1:3000/health); do
-            if [ $attempt -gt 5 ]; then
-              echo "❌ Error: The application health check timed out or crashed."
-              echo "=== CONTAINER LOGS ==="
-              docker logs app-container
-              exit 1
-            fi
-            echo "Container application warming up... retrying in 2 seconds..."
-            sleep 2
-            attempt=$((attempt+1))
-          done
-
-          echo "=================================================="
-          echo "🎉 SUCCESS: Endpoint responded perfectly!"
-          echo "=================================================="
-          echo "Response HTTP Status Code: $(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/health)"
-          echo "Response JSON Payload:"
-          curl -s http://127.0.0.1:3000/health
-          echo ""
-          echo "=================================================="
-
-      - name: Cleanup container resource handles
-        if: always()
-        run: |
-          echo "Stopping and deleting local runner test container..."
-          docker rm -f app-container
+          echo "=== Fetching Health Check Result ==="
+          # Run curl inside the container itself to bypass host network bugs
+          docker exec app-container curl -s http://127.0.0.1:3000/health
