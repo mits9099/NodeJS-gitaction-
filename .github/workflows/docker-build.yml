@@ -22,15 +22,17 @@ jobs:
 
       - name: Start container in background
         run: |
-          echo "Spinning up container and exposing port 3000..."
-          docker run -d --name app-container -p 3000:3000 local-app:test
+          echo "Spinning up container sharing the host network..."
+          # Added --network host to bypass proxy routing bugs
+          docker run -d --name app-container --network host local-app:test
 
       - name: Hit endpoint and output result to terminal
         run: |
-          echo "Polling http://localhost:3000/health until application answers..."
+          # Changed http://localhost:3000/health to http://127.0.0.1:3000/health
+          echo "Polling http://127.0.0.1:3000/health until application answers..."
           
           attempt=0
-          until $(curl --output /dev/null --silent --head --fail http://localhost:3000/health); do
+          until $(curl --output /dev/null --silent --head --fail http://127.0.0.1:3000/health); do
             if [ $attempt -gt 5 ]; then
               echo "❌ Error: The application health check timed out or crashed."
               echo "=== CONTAINER LOGS ==="
@@ -45,9 +47,9 @@ jobs:
           echo "=================================================="
           echo "🎉 SUCCESS: Endpoint responded perfectly!"
           echo "=================================================="
-          echo "Response HTTP Status Code: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/health)"
+          echo "Response HTTP Status Code: $(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/health)"
           echo "Response JSON Payload:"
-          curl -s http://localhost:3000/health
+          curl -s http://127.0.0.1:3000/health
           echo ""
           echo "=================================================="
 
