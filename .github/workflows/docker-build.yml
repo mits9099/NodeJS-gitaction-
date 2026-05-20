@@ -1,34 +1,61 @@
-name: Build and Push Docker Image
+name: Local Container Health Verification
 
 on:
   push:
-    branches: [ "main" ]
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+    branches: [ "main" ] # Runs automatically on every push to the main branch
+  pull_request:
+    branches: [ "main" ] # Runs automatically on every pull request to main
+  workflow_dispatch:      # Allows you to click a "Run workflow" button manually in GitHub
 
 jobs:
-  build-and-push:
+  test-endpoint:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository source code
         uses: actions/checkout@v4
 
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build local Docker image from Dockerfile
+        run: |
+          echo "Compiling TypeScript and building multi-stage container..."
+          docker build -t local-app:test .
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+      - name: Start container in background
+        run: |
+          echo "Spinning up container and exposing port 3000..."
+          docker run -d --name app-container -p 3000:3000 local-app:test
+
+      - name: Hit endpoint and output result to terminal
+        run: |
+          echo "Polling http://localhost:3000/health until application answers..."
+          
+          # Retry loop up to 6 times (12 seconds max) to give Node a moment to boot
+          attempt=0
+          until $(curl --output /dev/null --silent --head --fail http://localhost:3000/health); do
+            if [ $attempt -gt 5 ]; then
+              echo "❌ Error: The application health check timed out or crashed."
+              echo "=== CONTAINER LOGS ==="
+              docker logs app-container
+              exit 1
+            fi
+            echo "Container application warming up... retrying in 2 seconds..."
+            sleep 2
+            attempt=$((attempt+1))
+          done
+
+          echo "=================================================="
+          echo "🎉 SUCCESS: Endpoint responded perfectly!"
+          echo "=================================================="
+          echo "Response HTTP Status Code: $(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/health)"
+          echo "Response JSON Payload:"
+          
+          # This line fetches the real response and prints it directly into your GitHub Actions Terminal
+          curl -s http://localhost:3000/health
+          echo ""
+          echo "=================================================="
+
+       Silber- name: Cleanup container resource handles
+        if: always() # Guarantees container cleanup runs even if the health check fails
+        run: |
+          echo "Stopping and deleting local runner test container..."
+          docker rm -f app-container
