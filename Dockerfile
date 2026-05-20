@@ -1,6 +1,7 @@
 # Stage 1: Build the TypeScript application
 FROM node:20-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache curl # Adds curl to the container
 COPY package*.json tsconfig.json ./
 COPY src/ ./src
 RUN npm install && npm run build
