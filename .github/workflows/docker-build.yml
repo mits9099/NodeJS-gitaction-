@@ -25,3 +25,8 @@ jobs:
           echo "=== Fetching Health Check Result ==="
           # Run curl inside the container itself to bypass host network bugs
           docker exec app-container curl -s http://127.0.0.1:3000/health
+      - name: Cleanup container resource handles
+        if: always()
+        run: |
+          echo "Stopping and deleting local runner test container..."
+          docker rm -f app-container
